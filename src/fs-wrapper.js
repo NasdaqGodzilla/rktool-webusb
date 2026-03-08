@@ -48,6 +48,42 @@ function isBrowserRuntime(runtime) {
   return runtime === 'browser';
 }
 
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) {
+    return data;
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+
+  return null;
+}
+
+async function readSourceBytes(source) {
+  const directBytes = toUint8Array(source);
+  if (directBytes) {
+    return directBytes;
+  }
+
+  if (source && typeof source.arrayBuffer === 'function') {
+    const buffer = await source.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  if (typeof source === 'string') {
+    const fsModule = await import('node:fs/promises');
+    const buffer = await fsModule.readFile(source);
+    return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  }
+
+  throw new Error('Unable to read file source bytes for browser runtime');
+}
+
 export function ensureRuntimeDirs(FS) {
   ensureDir(FS, '/tmp');
   ensureDir(FS, '/tmp/log');
@@ -62,8 +98,8 @@ export function createFsWrapper(moduleInstance, options = {}) {
   const runtime = options.runtime || 'node';
   const mountRoot = options.mountRoot || DEFAULT_MOUNT_ROOT;
   const FS = moduleInstance.FS;
-  const WORKERFS = moduleInstance.WORKERFS;
-  const NODEFS = moduleInstance.NODEFS;
+  const WORKERFS = moduleInstance.WORKERFS || FS.filesystems?.WORKERFS;
+  const NODEFS = moduleInstance.NODEFS || FS.filesystems?.NODEFS;
 
   ensureRuntimeDirs(FS);
   ensureDir(FS, mountRoot);
@@ -78,14 +114,25 @@ export function createFsWrapper(moduleInstance, options = {}) {
     ensureDir(FS, mountPoint);
 
     if (isBrowserRuntime(runtime)) {
-      if (!WORKERFS) {
-        throw new Error('WORKERFS is not available in current module');
-      }
-
       const fileObject = source;
       const fileName = fileObject.name || name || 'input.bin';
-      FS.mount(WORKERFS, { files: [fileObject] }, mountPoint);
-      return `${mountPoint}/${fileName}`;
+
+      if (WORKERFS) {
+        try {
+          FS.mount(WORKERFS, { files: [fileObject] }, mountPoint);
+          return `${mountPoint}/${fileName}`;
+        } catch (_error) {
+        }
+      }
+
+      if (typeof FS.writeFile !== 'function') {
+        throw new Error('FS.writeFile is required for browser file fallback');
+      }
+
+      const bytes = await readSourceBytes(source);
+      const virtualPath = `${mountPoint}/${fileName}`;
+      FS.writeFile(virtualPath, bytes);
+      return virtualPath;
     }
 
     if (isNodeRuntime(runtime)) {

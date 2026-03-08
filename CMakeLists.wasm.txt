@@ -62,7 +62,7 @@ target_link_options(rkdeveloptool PRIVATE
     "-sEXPORT_ES6=1"
     "-sEXPORT_NAME=createRKDevelopToolModule"
     "-sINVOKE_RUN=0"
-    "-sEXPORTED_RUNTIME_METHODS=['FS','callMain']"
+    "-sEXPORTED_RUNTIME_METHODS=['FS','callMain','Asyncify']"
     "-sEXPORTED_FUNCTIONS=['_main']"
 )
 

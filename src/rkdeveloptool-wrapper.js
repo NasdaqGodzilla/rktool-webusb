@@ -156,29 +156,43 @@ function normalizeArgv(args) {
   return args.map((value) => String(value));
 }
 
+function isPromiseLike(value) {
+  return value && typeof value.then === 'function';
+}
+
+async function runCallMainAndWait(moduleInstance, argv) {
+  const callMainResult = moduleInstance.callMain(argv);
+  if (isPromiseLike(callMainResult)) {
+    return callMainResult;
+  }
+
+  const asyncify = moduleInstance.Asyncify;
+  if (
+    asyncify
+    && asyncify.currData
+    && typeof asyncify.whenDone === 'function'
+  ) {
+    return asyncify.whenDone();
+  }
+
+  return callMainResult;
+}
+
 export async function createRKDevelopToolWrapper(options = {}) {
   const platform = createPlatformAdapter(options);
   const factory = await resolveModuleFactory(options.moduleFactory, options.moduleUrl);
   const wasmSpecifier = normalizeSpecifier(options.wasmUrl, DEFAULT_WASM_URL);
 
-  let activeRun = null;
-
   const moduleInstance = await factory({
     noInitialRun: true,
     print: (line) => {
       const text = String(line);
-      if (activeRun) {
-        activeRun.stdout.push(text);
-      }
       if (typeof options.onStdout === 'function') {
         options.onStdout(text);
       }
     },
     printErr: (line) => {
       const text = String(line);
-      if (activeRun) {
-        activeRun.stderr.push(text);
-      }
       if (typeof options.onStderr === 'function') {
         options.onStderr(text);
       }
@@ -197,14 +211,14 @@ export async function createRKDevelopToolWrapper(options = {}) {
   FS.writeFile('/tmp/config.ini', '', { encoding: 'utf8' });
   ensureDir(FS, '/tmp/log');
   FS.chdir('/tmp');
-  if (typeof options.onLogWrite !== 'function') {
-	options.onLogWrite = () => {};
-  }
-  setupLogForwarding(FS, options.onLogWrite);
+  const onLogWrite = typeof options.onLogWrite === 'function'
+    ? options.onLogWrite
+    : () => {};
+  setupLogForwarding(FS, onLogWrite);
 
   const fs = platform.createFileSystem(moduleInstance, options.fsOptions);
 
-  async function runCommand(args, runOptions = {}) {
+  const runCommand = async function (args, runOptions = {}) {
     const argv = normalizeArgv(args);
 
     if (runOptions.requestDevice) {
@@ -225,30 +239,21 @@ export async function createRKDevelopToolWrapper(options = {}) {
       }
     }
 
-    const runState = {
-      stdout: [],
-      stderr: [],
-    };
-    activeRun = runState;
-
     let exitCode = 0;
     try {
-      moduleInstance.callMain(argv);
+      const mainResult = await runCallMainAndWait(moduleInstance, argv);
+      if (typeof mainResult === 'number') {
+        exitCode = mainResult;
+      }
     } catch (error) {
       if (error && typeof error.status === 'number') {
         exitCode = error.status;
       } else {
-        activeRun = null;
         throw error;
       }
     }
-
-    activeRun = null;
-
     return {
-      exitCode,
-      stdout: runState.stdout.join('\n'),
-      stderr: runState.stderr.join('\n'),
+      exitCode
     };
   }
 
