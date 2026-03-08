@@ -49,13 +49,7 @@ Index: rkdeveloptool/main.cpp
 ===================================================================
 --- rkdeveloptool.orig/main.cpp
 +++ rkdeveloptool/main.cpp
-@@ -3359,11 +3359,15 @@ int main(int argc, char* argv[])
- 	int ret;
- 	char szProgramProcPath[100];
- 	char szProgramDir[256];
-+	ssize_t nReadlinkLen = 0;
- 	string strLogDir,strConfigFile;
- 	struct stat statBuf;
+@@ -3364,6 +3364,9 @@ int main(int argc, char* argv[])
  
  	g_ConfigItemVec.clear();
  
@@ -65,7 +59,7 @@ Index: rkdeveloptool/main.cpp
  #ifndef __MINGW32__
  	snprintf(szProgramProcPath, sizeof(szProgramProcPath), "/proc/%d/exe", getpid());
  	if (readlink(szProgramProcPath, szProgramDir, 256) == -1)
-@@ -3378,6 +3382,7 @@ int main(int argc, char* argv[])
+@@ -3378,6 +3381,7 @@ int main(int argc, char* argv[])
  		if (pSlash)
  			*pSlash = '\0';
  	}
