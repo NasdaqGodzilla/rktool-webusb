@@ -1,0 +1,59 @@
+diff --git a/libusb/os/events_posix.c b/libusb/os/events_posix.c
+index bf984b9..180031f 100644
+--- a/libusb/os/events_posix.c
++++ b/libusb/os/events_posix.c
+@@ -41,7 +41,27 @@
+ #include <emscripten/threading.h>
+ 
+ EM_ASYNC_JS(void, em_libusb_wait_async, (const _Atomic int* ptr, int expected_value, int timeout), {
+-	await Atomics.waitAsync(HEAP32, ptr >> 2, expected_value, timeout).value;
++	const index = ptr >> 2;
++	const canUseWaitAsync =
++		typeof Atomics !== 'undefined'
++		&& typeof Atomics.waitAsync === 'function'
++		&& typeof SharedArrayBuffer !== 'undefined'
++		&& HEAP32.buffer instanceof SharedArrayBuffer;
++
++	if (canUseWaitAsync) {
++		await Atomics.waitAsync(HEAP32, index, expected_value, timeout).value;
++		return;
++	}
++
++	const hasFiniteTimeout = Number.isFinite(timeout) && timeout >= 0;
++	const deadline = hasFiniteTimeout ? Date.now() + timeout : Infinity;
++
++	while (HEAP32[index] === expected_value) {
++		if (Date.now() >= deadline) {
++			break;
++		}
++		await new Promise((resolve) => setTimeout(resolve, 1));
++	}
+ });
+ 
+ static void em_libusb_wait(const _Atomic int *ptr, int expected_value, int timeout)
+@@ -257,11 +277,21 @@ int usbi_wait_for_events(struct libusb_context *ctx,
+ 	usbi_dbg(ctx, "poll() %u fds with timeout in %dms", (unsigned int)nfds, timeout_ms);
+ #ifdef __EMSCRIPTEN__
+ 	/* Emscripten's poll doesn't actually block, so we need to use an
+-	 * out-of-band waiting signal. */
++	 * out-of-band waiting signal.
++	 *
++	 * Also avoid relying on poll() to report the internal event FD. In
++	 * non-pthread builds this can fail to wake even when a transfer
++	 * completion was signalled, leading to synchronous API hangs.
++	 *
++	 * Treat `has_event` as the source of truth and emulate poll-triggered
++	 * internal events directly. */
+ 	em_libusb_wait(&ctx->event.has_event, 0, timeout_ms);
+-	/* Emscripten ignores timeout_ms, but set it to 0 for future-proofing
+-	 * in case they ever implement real poll. */
+-	timeout_ms = 0;
++	if (ctx->event.has_event) {
++		reported_events->event_triggered = 1;
++		reported_events->num_ready = 0;
++		return LIBUSB_SUCCESS;
++	}
++	return LIBUSB_ERROR_TIMEOUT;
+ #endif
+ 	num_ready = poll(fds, nfds, timeout_ms);
+ 	usbi_dbg(ctx, "poll() returned %d", num_ready);
