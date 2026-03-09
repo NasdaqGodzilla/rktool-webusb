@@ -264,7 +264,6 @@ export async function createRKDevelopToolWrapper(options = {}) {
     fs,
     requestDevice: (filters) => platform.requestDevice(filters),
     getDevices: () => platform.getDevices(),
-    pickFirmwareFile: () => platform.pickFile(),
     mountFile: (name, source) => fs.mountFile(name, source),
     runCommand,
   };

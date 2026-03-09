@@ -70,7 +70,7 @@ python3 -m http.server 8080
 
 页面内可：
 
-- 选择固件文件（`showOpenFilePicker`）
+- 通过 file input 选择固件文件
 - 选择 Rockchip 设备（`navigator.usb.requestDevice`）
 - 执行 `ld`、`db`、`wl` 等命令
 

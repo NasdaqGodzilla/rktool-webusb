@@ -24,25 +24,6 @@ export function createPlatformAdapter(options = {}) {
     webUsb: options.webUsb,
   });
 
-  async function pickFile() {
-    if (runtime === 'browser') {
-      if (!globalThis.showOpenFilePicker) {
-        throw new Error('showOpenFilePicker is not available in this browser');
-      }
-      const handles = await globalThis.showOpenFilePicker({
-        multiple: false,
-      });
-
-      if (!handles.length) {
-        throw new Error('No file selected');
-      }
-
-      return handles[0].getFile();
-    }
-
-    throw new Error('pickFile() is only available in browser runtime');
-  }
-
   function createFileSystem(moduleInstance, fsOptions = {}) {
     return createFsWrapper(moduleInstance, {
       runtime,
@@ -53,7 +34,6 @@ export function createPlatformAdapter(options = {}) {
   return {
     runtime,
     usbFilters,
-    pickFile,
     createFileSystem,
     requestDevice: usbAdapter.requestDevice,
     getDevices: usbAdapter.getDevices,

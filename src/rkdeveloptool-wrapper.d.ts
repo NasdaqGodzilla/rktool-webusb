@@ -19,7 +19,6 @@ export interface RkdeveloptoolWrapper {
   fs: unknown;
   requestDevice(filters?: Array<{ vendorId?: number; productId?: number }>): Promise<unknown>;
   getDevices(): Promise<unknown[]>;
-  pickFirmwareFile(): Promise<File>;
   mountFile(name: string, source: unknown): Promise<string>;
   runCommand(args: string[], options?: RunCommandOptions): Promise<RunCommandResult>;
 }

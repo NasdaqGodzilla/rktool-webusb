@@ -54,9 +54,6 @@ const wrapper = await createRKDevelopToolWrapper({
 - `getDevices()`
   - 获取已授权/可见设备列表。
 
-- `pickFirmwareFile()`
-  - 浏览器下调用 `showOpenFilePicker()` 并返回 `File`。
-
 - `mountFile(name, source)`
   - 显式挂载文件并返回虚拟路径。
   - 浏览器必须可用 `WORKERFS`，Node.js 必须可用 `NODEFS`；不可用时会抛错。
