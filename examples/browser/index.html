@@ -76,7 +76,7 @@
     dlLoaderBtn.addEventListener('click', async () => {
       try {
         await wrapper.runCommand(['db', selectedLoader]);
-        appendLine('loader 下载完成');
+        appendLine('loader 下载完成，点击“选择 Rockchip 设备”按钮重新连接');
       } catch (error) {
         appendLine(String(error.message || error));
       }
