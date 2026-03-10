@@ -74,6 +74,8 @@ python3 -m http.server 8080
 - 选择 Rockchip 设备（`navigator.usb.requestDevice`）
 - 执行 `ld`、`db`、`wl` 等命令
 
+![web](docs/web.png)
+
 ## 测试
 
 ```bash
