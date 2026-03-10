@@ -179,7 +179,7 @@ async function runCallMainAndWait(moduleInstance, argv) {
 }
 
 export async function createRKDevelopToolWrapper(options = {}) {
-  const platform = createPlatformAdapter(options);
+  const platform = await createPlatformAdapter(options);
   const factory = await resolveModuleFactory(options.moduleFactory, options.moduleUrl);
   const wasmSpecifier = normalizeSpecifier(options.wasmUrl, DEFAULT_WASM_URL);
   const dedupedLog = (callback) => {

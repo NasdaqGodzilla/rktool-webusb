@@ -13,10 +13,10 @@ export function detectRuntime() {
   return 'unknown';
 }
 
-export function createPlatformAdapter(options = {}) {
+export async function createPlatformAdapter(options = {}) {
   const runtime = options.runtime || detectRuntime();
   const usbFilters = options.usbFilters || ROCKCHIP_USB_FILTERS;
-  const usbAdapter = createUsbAdapter({
+  const usbAdapter = await createUsbAdapter({
     runtime,
     filters: usbFilters,
     nodeUsb: options.nodeUsb,

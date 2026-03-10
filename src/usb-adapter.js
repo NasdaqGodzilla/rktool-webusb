@@ -8,14 +8,21 @@ function isNodeRuntime(runtime) {
   return runtime === 'node';
 }
 
-async function loadNodeUsb() {
-  const usbModule = await import('usb');
-  return usbModule.usb || usbModule.default || usbModule;
-}
-
-function resolveWebUsb(options = {}) {
+async function resolveWebUsb(options = {}) {
   if (options.webUsb) {
     return options.webUsb;
+  }
+
+  const runtime = options.runtime || 'node';
+  if (isNodeRuntime(runtime)) {
+    const usbModule = await import('usb');
+    // Expose WebUSB adapter to global navigator object so libusb can access it
+    if (typeof globalThis !== 'undefined') {
+      if (!globalThis.navigator) {
+        globalThis.navigator = {};
+      }
+      globalThis.navigator.usb = usbModule.getWebUsb();
+    }
   }
 
   if (globalThis.navigator && globalThis.navigator.usb) {
@@ -25,67 +32,19 @@ function resolveWebUsb(options = {}) {
   return null;
 }
 
-export function createUsbAdapter(options = {}) {
-  const runtime = options.runtime || 'node';
+export async function createUsbAdapter(options = {}) {
   const defaultFilters = options.filters || ROCKCHIP_USB_FILTERS;
-  const webUsb = resolveWebUsb(options);
-  let nodeUsbPromise = null;
-
-  async function getNodeUsb() {
-    if (options.nodeUsb) {
-      return options.nodeUsb;
-    }
-
-    if (!nodeUsbPromise) {
-      nodeUsbPromise = (async () => {
-        if (typeof options.loadNodeUsb === 'function') {
-          const usbModule = await options.loadNodeUsb();
-          return usbModule?.usb || usbModule?.default || usbModule;
-        }
-
-        return loadNodeUsb();
-      })();
-    }
-
-    return nodeUsbPromise;
-  }
+  const webUsb = await resolveWebUsb(options);
 
   async function requestDevice(filters = defaultFilters) {
-    if (isBrowserRuntime(runtime)) {
-      if (!webUsb) {
-        throw new Error('WebUSB is not available in this browser context');
-      }
-      return webUsb.requestDevice({ filters });
+    if (!webUsb) {
+      throw new Error('WebUSB is not available in this browser context');
     }
-
-    if (isNodeRuntime(runtime)) {
-      const usb = await getNodeUsb();
-      const list = usb.getDeviceList();
-      return list.find((device) => {
-        if (!device || !device.deviceDescriptor) {
-          return false;
-        }
-        return filters.some((filter) => filter.vendorId === device.deviceDescriptor.idVendor);
-      }) || null;
-    }
-
-    throw new Error(`Unsupported runtime: ${runtime}`);
+    return webUsb.requestDevice({ filters });
   }
 
   async function getDevices() {
-    if (isBrowserRuntime(runtime)) {
-      if (!webUsb) {
-        return [];
-      }
-      return webUsb.getDevices();
-    }
-
-    if (isNodeRuntime(runtime)) {
-      const usb = await getNodeUsb();
-      return usb.getDeviceList();
-    }
-
-    return [];
+    return webUsb.getDevices();
   }
 
   return {

@@ -580,77 +580,6 @@ test('simulate command: rkdeveloptool db loader/MiniLoaderAll.bin', async () => 
   fs.rmSync(sandboxDir, { recursive: true, force: true });
 });
 
-test('runCommand requestDevice uses mocked node-usb in unit test', async () => {
-  let capturedArgv = [];
-  let getDeviceListCallCount = 0;
-
-  const mockNodeUsb = {
-    requestDevice() {
-    },
-    getDeviceList() {
-      getDeviceListCallCount++;
-      return [
-        {
-          deviceDescriptor: {
-            idVendor: 0x2207,
-            idProduct: 0x350b,
-          },
-        },
-      ];
-    },
-  };
-
-  const wrapper = await createRKDevelopToolWrapper(createUnitTestWrapperOptions({
-    nodeUsb: mockNodeUsb,
-    moduleFactory: async () => {
-      const mockModule = createMockEmscriptenModule();
-      mockModule.callMain = (argv) => {
-        capturedArgv = argv;
-      };
-      return mockModule;
-    },
-  }));
-
-  const result = await wrapper.runCommand(['ld'], { requestDevice: true });
-
-  assert.equal(result.exitCode, 0);
-  assert.deepEqual(capturedArgv, ['ld']);
-  assert.equal(getDeviceListCallCount, 1);
-});
-
-test('getDevices uses mocked node-usb in unit test', async () => {
-  let getDeviceListCallCount = 0;
-  const mockDevice = {
-    deviceDescriptor: {
-      idVendor: 0x2207,
-      idProduct: 0x350b,
-    },
-  };
-
-  const mockNodeUsb = {
-    getDeviceList() {
-      getDeviceListCallCount++;
-      return [mockDevice];
-    },
-  };
-
-  const wrapper = await createRKDevelopToolWrapper(createUnitTestWrapperOptions({
-    nodeUsb: mockNodeUsb,
-    moduleFactory: async () => {
-      const mockModule = createMockEmscriptenModule();
-      mockModule.callMain = () => {};
-      return mockModule;
-    },
-  }));
-
-  const devices = await wrapper.getDevices();
-
-  assert.equal(getDeviceListCallCount, 1);
-  assert.equal(Array.isArray(devices), true);
-  assert.equal(devices.length, 1);
-  assert.equal(devices[0], mockDevice);
-});
-
 test('webusb stage: runCommand requests mocked WebUSB device before callMain', async () => {
   let capturedArgv = [];
   const callOrder = [];
@@ -799,7 +728,7 @@ test('real flow: ld runs real callMain and only mocks WebUSB', {
       runCommandResolved = true;
 
       assert.equal(typeof result.exitCode, 'number');
-      assert.equal(state.requestDeviceCallCount, 0);
+      assert.equal(state.requestDeviceCallCount, 1);
       assert.equal(state.getDevicesCallCount, 1);
       assert.equal(transportState.openCallCount, 1);
       assert.equal(transportState.controlTransferInCalls.length > 0, true);
@@ -857,7 +786,7 @@ test('real flow: db loader fixture mounts into VFS before command', {
       console.debug('transport statistic: open=', transportState.openCallCount, 'cout=', transportState.controlTransferOutCalls.length, 'cin=', transportState.controlTransferInCalls.length);
 
       assert.equal(typeof result.exitCode, 'number');
-      assert.equal(state.requestDeviceCallCount, 0);
+      assert.equal(state.requestDeviceCallCount, 1);
       assert.equal(state.getDevicesCallCount, 1);
       assert.equal(transportState.openCallCount, 2);
       assert.equal(transportState.controlTransferOutCalls.length > 0, true);
@@ -918,7 +847,7 @@ test('real flow: wl fw fixture mounts into VFS before command', {
       console.debug('transport statistic: open=', transportState.openCallCount, 'out=', transportState.transferOutCalls.length, 'in=', transportState.transferInCalls.length);
 
       assert.equal(typeof result.exitCode, 'number');
-      assert.equal(state.requestDeviceCallCount, 0);
+      assert.equal(state.requestDeviceCallCount, 1);
       assert.equal(state.getDevicesCallCount, 1);
       assert.equal(transportState.openCallCount, 2);
       assert.equal(transportState.controlTransferInCalls.length > 0, true);

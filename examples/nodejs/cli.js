@@ -19,7 +19,7 @@ async function main() {
     },
   });
 
-  const result = await wrapper.runCommand(args);
+  const result = await wrapper.runCommand(args, {requestDevice: true});
   process.exitCode = result.exitCode;
 }
 
