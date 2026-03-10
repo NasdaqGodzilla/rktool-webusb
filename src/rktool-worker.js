@@ -68,6 +68,13 @@ self.addEventListener('message', async (event) => {
         break;
       }
 
+      case 'sleep': {
+        const { duration } = params;
+        await new Promise((resolve) => setTimeout(resolve, duration));
+        postResponse(id, 'sleep-complete', {});
+        break;
+      }
+
       default:
         throw new Error(`Unknown method: ${method}`);
     }

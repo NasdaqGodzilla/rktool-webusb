@@ -7,6 +7,21 @@
 </head>
 <body>
   <h1>rkdeveloptool WebUSB 示例</h1>
+  <details>
+    <summary>说明</summary>
+    <h3>仅支持 Chrome/Edge 等基于 Chromium 的浏览器</h3>
+    <h4>不建议在 Windows 下使用，因为 Windows 下有 Rockchip 官方的图形刷机工具。且可能需要安装 WinUSB 驱动，驱动又可能跟 Rockchip 驱动冲突。自行评估风险</h4>
+    <h5>一般刷机步骤：</h4>
+    <ol>
+      <li>设备进入 MASKROM 或 Loader 模式（通常是开机时按住某个按键，具体请搜索设备型号+MASKROM/Loader）</li>
+      <li>设备通过 USB 连接到电脑（通常是设备的 Type-C 接口，也可能是 A 口）</li>
+      <li>选择 Loader 文件（ MASKROM 模式需要）</li>
+      <li>选择固件</li>
+      <li>点击刷写固件按钮，此过程可能会弹出设备授权请求（MASKROM 模式最多两次），如果设备列表为空，请检查设备是否正确连接（如 USB 口是否正确，设备是否进入正确模式）</li>
+      <li>刷写完成后在“电源”菜单中选择相应操作（如重启或关机），或手动操作设备</li>
+    </ol>
+    <h5>如需检查设备状态，点击“选择 Rockchip 设备”按钮，列表为空说明没有设备连接或设备未进入正确模式</h5>
+  </details>
 
   <div>
     <label for="pick-loader">选择Loader</label>
@@ -22,8 +37,8 @@
   </div>
 
   <div>
-    <button id="dl-loader" disabled>下载Loader</button>
-    <button id="dl-file" disabled>下载固件</button>
+    <button id="dl-loader" disabled>加载Loader</button>
+    <button id="dl-file" disabled>刷写固件</button>
     <select id="power">
       <option value="">电源</option>
       <option value="reboot">重启</option>
@@ -152,13 +167,13 @@
     });
     dlLoaderBtn.addEventListener('click', async () => {
       if (usbConnected && window.rkdev.serialNumber) {
-        if (!confirm('当前设备看起来已下载 Loader， 重复下载 Loader 可能会卡死，是否继续？'))
+        if (!confirm('当前设备看起来已加载 Loader，重复加载 Loader 可能会卡死，是否继续？'))
           return;
-        appendLine('强制重新下载 Loader 中...，如果卡死请刷新页面');
+        appendLine('强制重新加载 Loader 中...，如果卡死请刷新页面');
       }
       try {
         await wrapper.runCommand(['db', selectedLoader], {requestDevice: !usbConnected});
-        appendLine('loader 下载完成，可能要点击“选择 Rockchip 设备”按钮重新连接');
+        appendLine('Loader 加载完成，可能要点击“选择 Rockchip 设备”按钮重新连接');
       } catch (error) {
         appendLine(String(error.message || error));
       }
@@ -190,22 +205,26 @@
             appendLine('MASKROM 模式需要选择 Loader 文件！');
             return;
           }
-          appendLine('下载 Loader 中...');
+          appendLine('加载 Loader 中...');
           result = await wrapper.runCommand(['db', selectedLoader]);
           if (result.exitCode === 0) {
-            appendLine('Loader 下载完成');
+            appendLine('Loader 加载完成');
           } else {
-            appendLine('Loader 下载失败');
+            appendLine('Loader 加载失败');
             return;
           }
-          // Loader 下载完成后设备会重新连接，等1秒再继续操作
-          await new Promise((resolve)=>{setTimeout(resolve, 1000)})
+          // Loader 加载完成后设备会重新连接，需要重新检查usbConnected
+          // 在 worker 里执行 sleep 是为了防止浏览器的安全机制认为新的 requestDevice 请求不是用户触发的，从而被拒绝（SecurityError）
+          await wrapper.sleep(500);
+          if (!usbConnected) {
+            appendLine('设备ID可能发生变化，请重新选择设备（名称一般是USB-MSC，关闭浏览器之前，同一设备只需授权一次）...');
+            await requestDevice();
+          }
         }
-        
-        appendLine('下载固件中...');
+
+        appendLine('刷写固件中...');
         const startTime = new Date().getTime();
         result = await wrapper.runCommand(['wl', '0', '$FILE'], {
-          requestDevice: !usbConnected,
           fileSource: selectedFile,
           fileName: selectedFile.name,
           replaceToken: '$FILE',
@@ -213,9 +232,9 @@
         const endTime = new Date().getTime();
         const duration = (endTime - startTime) / 1000;
         if (result.exitCode === 0) {
-          appendLine(`固件下载成功，耗时 ${duration.toFixed(2)} 秒`);
+          appendLine(`固件刷写成功，耗时 ${duration.toFixed(2)} 秒`);
         } else {
-          appendLine('固件下载失败');
+          appendLine('固件刷写失败');
           return;
         }
       } catch (error) {

@@ -128,6 +128,10 @@ export class RKToolWorkerProxy {
     return result;
   }
 
+  async sleep(duration) {
+    await this.sendRequest('sleep', { duration });
+  }
+
   terminate() {
     this.worker.terminate();
     this.pendingRequests.clear();
@@ -147,6 +151,7 @@ export async function createRKToolWorker(options = {}) {
     getDevices: () => proxy.getDevices(),
     mountFile: (name, source) => proxy.mountFile(name, source),
     runCommand: (args, options) => proxy.runCommand(args, options),
+    sleep: (duration) => proxy.sleep(duration),
     terminate: () => proxy.terminate(),
   };
 }
