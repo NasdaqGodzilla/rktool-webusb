@@ -1,0 +1,16 @@
+Index: rkdeveloptool/main.cpp
+===================================================================
+--- rkdeveloptool.orig/main.cpp
++++ rkdeveloptool/main.cpp
+@@ -18,7 +18,11 @@
+ extern const char *szManufName[];
+ CRKLog *g_pLogObject=NULL;
+ CONFIG_ITEM_VECTOR g_ConfigItemVec;
++#ifdef __EMSCRIPTEN__
++#define DEFAULT_RW_LBA 1024
++#else
+ #define DEFAULT_RW_LBA 128
++#endif
+ #define CURSOR_MOVEUP_LINE(n) printf("%c[%dA", 0x1B, n)
+ #define CURSOR_DEL_LINE printf("%c[2K", 0x1B)
+ #define CURSOR_MOVE_HOME printf("%c[H", 0x1B)
