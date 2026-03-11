@@ -10,7 +10,10 @@ async function ensurePakoInflate() {
 
   if (!pakoInflateReadyPromise) {
     pakoInflateReadyPromise = (async () => {
-      const moduleSpecifiers = ['pako', 'https://esm.sh/pako@2.1.0'];
+      const moduleSpecifiers = [
+        'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.esm.mjs',
+        'https://esm.sh/pako@2.1.0',
+      ];
       let pakoModule = null;
       let lastError = null;
 
