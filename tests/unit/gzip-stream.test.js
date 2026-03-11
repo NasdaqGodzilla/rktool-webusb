@@ -14,6 +14,32 @@ function createPayload(size) {
   return payload;
 }
 
+function appendOpenWrtMetadata(gzipBytes, blockSizes) {
+  const normalizedBlocks = Array.isArray(blockSizes) ? blockSizes : [];
+  const totalMetadataSize = normalizedBlocks.reduce((sum, size) => sum + size, 0);
+  const output = new Uint8Array(gzipBytes.byteLength + totalMetadataSize);
+  output.set(gzipBytes, 0);
+
+  let writeOffset = gzipBytes.byteLength;
+  for (const blockSize of normalizedBlocks) {
+    const metadataBlock = new Uint8Array(blockSize);
+    metadataBlock.fill(0x5a, 0, Math.max(0, blockSize - 16));
+    metadataBlock[blockSize - 16] = 0x46; // F
+    metadataBlock[blockSize - 15] = 0x57; // W
+    metadataBlock[blockSize - 14] = 0x78; // x
+    metadataBlock[blockSize - 13] = 0x30; // 0
+    metadataBlock[blockSize - 4] = (blockSize >>> 24) & 0xff;
+    metadataBlock[blockSize - 3] = (blockSize >>> 16) & 0xff;
+    metadataBlock[blockSize - 2] = (blockSize >>> 8) & 0xff;
+    metadataBlock[blockSize - 1] = blockSize & 0xff;
+
+    output.set(metadataBlock, writeOffset);
+    writeOffset += blockSize;
+  }
+
+  return output;
+}
+
 async function withTempGzip(payload, callback) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rktool-gzip-'));
   const gzipPath = path.join(tempDir, 'payload.bin.gz');
@@ -26,12 +52,58 @@ async function withTempGzip(payload, callback) {
   }
 }
 
+async function withTempGzipBytes(gzipBytes, callback) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rktool-gzip-'));
+  const gzipPath = path.join(tempDir, 'payload.bin.gz');
+
+  try {
+    await fs.writeFile(gzipPath, gzipBytes);
+    return await callback(gzipPath);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 test('constructor resolves uncompressed size hint from gzip trailer', async () => {
   const payload = createPayload(12345);
 
   await withTempGzip(payload, async (gzipPath) => {
     const stream = new GzipStream(gzipPath);
     assert.equal(stream.uncompressedSize, payload.byteLength);
+  });
+});
+
+test('constructor ignores OpenWrt metadata footer chain and corrects sizes', async () => {
+  const payload = createPayload(12000);
+  const rawGzip = gzipSync(payload);
+  const metadataBlocks = [64, 96, 160];
+  const metadataSize = metadataBlocks.reduce((sum, size) => sum + size, 0);
+  const withMetadata = appendOpenWrtMetadata(rawGzip, metadataBlocks);
+
+  await withTempGzipBytes(withMetadata, async (gzipPath) => {
+    const stream = new GzipStream(gzipPath);
+
+    assert.equal(stream.metadataSize, metadataSize);
+    assert.equal(stream.compressedSize, rawGzip.byteLength);
+    assert.equal(stream.uncompressedSize, payload.byteLength);
+
+    stream.open();
+    try {
+      const output = new Uint8Array(payload.byteLength + 128);
+      let totalRead = 0;
+      while (totalRead < output.byteLength) {
+        const bytesRead = stream.read(output, totalRead, 257, totalRead);
+        if (bytesRead === 0) {
+          break;
+        }
+        totalRead += bytesRead;
+      }
+
+      assert.equal(totalRead, payload.byteLength);
+      assert.deepEqual(output.subarray(0, totalRead), payload);
+    } finally {
+      stream.close();
+    }
   });
 });
 

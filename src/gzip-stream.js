@@ -1,5 +1,8 @@
 const DEFAULT_PREFIX_CACHE_SIZE = 4 * 1024;
 const DEFAULT_COMPRESSED_CHUNK_SIZE = 64 * 1024;
+const OPENWRT_METADATA_MAGIC = [0x46, 0x57, 0x78, 0x30]; // "FWx0"
+const OPENWRT_METADATA_FOOTER_SIZE = 16;
+const OPENWRT_METADATA_MAX_TOTAL_SIZE = 32 * 1024;
 
 function isNodeRuntime() {
 	return typeof process !== 'undefined' && !!(process.versions && process.versions.node);
@@ -70,9 +73,86 @@ function isWorkerLikeRuntime() {
 	return typeof WorkerGlobalScope !== 'undefined' && globalThis instanceof WorkerGlobalScope;
 }
 
-export function readGzipISizeFromPath(pathname) {
-	if (!nodeRequire || !pathname) {
+function readUint32LE(bytes, offset) {
+	if (!bytes || offset < 0 || bytes.byteLength < offset + 4) {
 		return null;
+	}
+	return (
+		(bytes[offset])
+		| (bytes[offset + 1] << 8)
+		| (bytes[offset + 2] << 16)
+		| (bytes[offset + 3] << 24)
+	) >>> 0;
+}
+
+function readUint32BE(bytes, offset) {
+	if (!bytes || offset < 0 || bytes.byteLength < offset + 4) {
+		return null;
+	}
+	return (
+		(bytes[offset] << 24)
+		| (bytes[offset + 1] << 16)
+		| (bytes[offset + 2] << 8)
+		| (bytes[offset + 3])
+	) >>> 0;
+}
+
+function hasOpenWrtMetadataMagic(bytes) {
+	return !!bytes
+		&& bytes.byteLength >= OPENWRT_METADATA_FOOTER_SIZE
+		&& bytes[0] === OPENWRT_METADATA_MAGIC[0]
+		&& bytes[1] === OPENWRT_METADATA_MAGIC[1]
+		&& bytes[2] === OPENWRT_METADATA_MAGIC[2]
+		&& bytes[3] === OPENWRT_METADATA_MAGIC[3];
+}
+
+function detectOpenWrtMetadataSize(totalSize, readRange) {
+	if (typeof totalSize !== 'number' || totalSize < OPENWRT_METADATA_FOOTER_SIZE || typeof readRange !== 'function') {
+		return 0;
+	}
+
+	let metadataTotal = 0;
+	let cursor = totalSize;
+
+	while (cursor >= OPENWRT_METADATA_FOOTER_SIZE && metadataTotal < OPENWRT_METADATA_MAX_TOTAL_SIZE) {
+		const footerOffset = cursor - OPENWRT_METADATA_FOOTER_SIZE;
+		const footer = readRange(footerOffset, OPENWRT_METADATA_FOOTER_SIZE);
+		if (!hasOpenWrtMetadataMagic(footer)) {
+			break;
+		}
+
+		const blockSize = readUint32BE(footer, OPENWRT_METADATA_FOOTER_SIZE - 4);
+		if (!Number.isFinite(blockSize) || blockSize < OPENWRT_METADATA_FOOTER_SIZE) {
+			break;
+		}
+
+		if (blockSize > cursor) {
+			break;
+		}
+
+		if (metadataTotal + blockSize > OPENWRT_METADATA_MAX_TOTAL_SIZE) {
+			break;
+		}
+
+		metadataTotal += blockSize;
+		cursor -= blockSize;
+	}
+
+	return metadataTotal;
+}
+
+function createUnknownSourceInfo() {
+	return {
+		sourceSize: 0,
+		metadataSize: 0,
+		compressedSize: 0,
+		uncompressedSize: null,
+	};
+}
+
+function probeNodeSourceInfo(pathname) {
+	if (!nodeRequire || !pathname) {
+		return createUnknownSourceInfo();
 	}
 
 	const fs = nodeRequire('node:fs');
@@ -80,20 +160,44 @@ export function readGzipISizeFromPath(pathname) {
 
 	try {
 		const stat = fs.statSync(pathname);
-		if (!stat || typeof stat.size !== 'number' || stat.size < 4) {
-			return null;
+		const sourceSize = normalizeSize(stat?.size, 0);
+		if (sourceSize <= 0) {
+			return {
+				sourceSize,
+				metadataSize: 0,
+				compressedSize: 0,
+				uncompressedSize: null,
+			};
 		}
 
 		fd = fs.openSync(pathname, 'r');
-		const trailer = Buffer.allocUnsafe(4);
-		const bytesRead = fs.readSync(fd, trailer, 0, 4, stat.size - 4);
-		if (bytesRead !== 4) {
-			return null;
-		}
+		const readRange = (offset, length) => {
+			if (offset < 0 || length <= 0 || offset + length > sourceSize) {
+				return null;
+			}
+			const scratch = Buffer.allocUnsafe(length);
+			const bytesRead = fs.readSync(fd, scratch, 0, length, offset);
+			if (bytesRead !== length) {
+				return null;
+			}
+			return new Uint8Array(scratch.buffer, scratch.byteOffset, length);
+		};
 
-		return trailer.readUInt32LE(0);
+		const metadataSize = detectOpenWrtMetadataSize(sourceSize, readRange);
+		const compressedSize = Math.max(0, sourceSize - metadataSize);
+		const trailer = compressedSize >= 4
+			? readRange(compressedSize - 4, 4)
+			: null;
+		const uncompressedSize = readUint32LE(trailer, 0);
+
+		return {
+			sourceSize,
+			metadataSize,
+			compressedSize,
+			uncompressedSize,
+		};
 	} catch (_error) {
-		return null;
+		return createUnknownSourceInfo();
 	} finally {
 		if (fd !== null) {
 			try {
@@ -104,34 +208,69 @@ export function readGzipISizeFromPath(pathname) {
 	}
 }
 
-export function readGzipISizeFromBlob(blob) {
+function probeBlobSourceInfo(blob) {
+	const sourceSize = normalizeSize(blob?.size, 0);
 	if (
 		!blob
 		|| typeof blob !== 'object'
-		|| typeof blob.size !== 'number'
-		|| blob.size < 4
 		|| typeof blob.slice !== 'function'
+		|| sourceSize <= 0
 		|| typeof FileReaderSync !== 'function'
 	) {
-		return null;
+		return {
+			sourceSize,
+			metadataSize: 0,
+			compressedSize: sourceSize,
+			uncompressedSize: null,
+		};
 	}
 
 	try {
 		const reader = new FileReaderSync();
-		const trailer = blob.slice(blob.size - 4, blob.size);
-		const bytes = reader.readAsArrayBuffer(trailer);
-		if (!bytes || bytes.byteLength < 4) {
-			return null;
-		}
+		const readRange = (offset, length) => {
+			if (offset < 0 || length <= 0 || offset + length > sourceSize) {
+				return null;
+			}
+			const arrayBuffer = reader.readAsArrayBuffer(blob.slice(offset, offset + length));
+			if (!arrayBuffer || arrayBuffer.byteLength !== length) {
+				return null;
+			}
+			return new Uint8Array(arrayBuffer);
+		};
 
-		return new DataView(bytes).getUint32(0, true);
+		const metadataSize = detectOpenWrtMetadataSize(sourceSize, readRange);
+		const compressedSize = Math.max(0, sourceSize - metadataSize);
+		const trailer = compressedSize >= 4
+			? readRange(compressedSize - 4, 4)
+			: null;
+		const uncompressedSize = readUint32LE(trailer, 0);
+
+		return {
+			sourceSize,
+			metadataSize,
+			compressedSize,
+			uncompressedSize,
+		};
 	} catch (_error) {
-		return null;
+		return {
+			sourceSize,
+			metadataSize: 0,
+			compressedSize: sourceSize,
+			uncompressedSize: null,
+		};
 	}
 }
 
+export function readGzipISizeFromPath(pathname) {
+	return probeNodeSourceInfo(pathname).uncompressedSize;
+}
+
+export function readGzipISizeFromBlob(blob) {
+	return probeBlobSourceInfo(blob).uncompressedSize;
+}
+
 class NodeChunkReader {
-	constructor(filePath, chunkSize) {
+	constructor(filePath, chunkSize, effectiveSize = null) {
 		if (!nodeRequire) {
 			throw new Error('Node.js require is unavailable for sync source reading');
 		}
@@ -139,7 +278,9 @@ class NodeChunkReader {
 		this.fs = fs;
 		this.fd = fs.openSync(filePath, 'r');
 		const stat = fs.fstatSync(this.fd);
-		this.size = normalizeSize(stat.size, 0);
+		const sourceSize = normalizeSize(stat.size, 0);
+		const safeEffectiveSize = normalizeSize(effectiveSize, sourceSize);
+		this.size = Math.max(0, Math.min(sourceSize, safeEffectiveSize));
 		this.offset = 0;
 		this.eof = this.size === 0;
 		this._scratch = Buffer.allocUnsafe(chunkSize);
@@ -175,7 +316,7 @@ class NodeChunkReader {
 }
 
 class BlobChunkReader {
-	constructor(source, chunkSize) {
+	constructor(source, chunkSize, effectiveSize = null) {
 		if (!source || typeof source !== 'object') {
 			throw new Error('Browser source must be a File/Blob-like object');
 		}
@@ -188,7 +329,9 @@ class BlobChunkReader {
 
 		this.source = source;
 		this.reader = new FileReaderSync();
-		this.size = normalizeSize(source.size, 0);
+		const sourceSize = normalizeSize(source.size, 0);
+		const safeEffectiveSize = normalizeSize(effectiveSize, sourceSize);
+		this.size = Math.max(0, Math.min(sourceSize, safeEffectiveSize));
 		this.offset = 0;
 		this.eof = this.size === 0;
 		this.chunkSize = chunkSize;
@@ -256,9 +399,13 @@ function createPakoInflater(runtime, onData) {
 export class GzipStream {
 	constructor(source, options = {}) {
 		this.source = source;
-		this.uncompressedSize = typeof source === 'string'
-			? readGzipISizeFromPath(source)
-			: readGzipISizeFromBlob(source);
+		this._sourceInfo = typeof source === 'string'
+			? probeNodeSourceInfo(source)
+			: probeBlobSourceInfo(source);
+		this.sourceSize = this._sourceInfo.sourceSize;
+		this.metadataSize = this._sourceInfo.metadataSize;
+		this.compressedSize = this._sourceInfo.compressedSize;
+		this.uncompressedSize = this._sourceInfo.uncompressedSize;
 		this.prefixCacheSize = normalizeSize(options.prefixCacheSize, DEFAULT_PREFIX_CACHE_SIZE);
 		this.compressedChunkSize = normalizePositiveSize(
 			options.compressedChunkSize,
@@ -294,13 +441,13 @@ export class GzipStream {
 					throw new Error('Node.js file path source is only supported in Node.js runtime');
 				}
 				this._runtime = 'node';
-				this._sourceReader = new NodeChunkReader(this.source, this.compressedChunkSize);
+				this._sourceReader = new NodeChunkReader(this.source, this.compressedChunkSize, this.compressedSize);
 			} else {
 				if (!isWorkerLikeRuntime()) {
 					throw new Error('Sync browser gzip reading is only supported in Worker runtime');
 				}
 				this._runtime = 'browser';
-				this._sourceReader = new BlobChunkReader(this.source, this.compressedChunkSize);
+				this._sourceReader = new BlobChunkReader(this.source, this.compressedChunkSize, this.compressedSize);
 			}
 
 			this._inflater = this._createInflater((chunk) => this._enqueue(chunk));
@@ -386,6 +533,8 @@ export class GzipStream {
 			const customInflater = this.createInflater({
 				runtime: this._runtime,
 				source: this.source,
+				compressedSize,
+				uncompressedSize,
 				onData,
 			});
 			if (!customInflater || typeof customInflater.push !== 'function') {
