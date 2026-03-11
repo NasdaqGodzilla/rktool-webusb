@@ -1,3 +1,5 @@
+import { GzipStream } from './gzip-stream.js';
+
 var ENVIRONMENT_IS_NODE = globalThis.process?.versions?.node && globalThis.process?.type != "renderer";
 
 if (ENVIRONMENT_IS_NODE) {
@@ -96,6 +98,63 @@ function resolveBrowserMount(source, fallbackName) {
   };
 }
 
+function stripGzipExtension(fileName) {
+  const normalized = String(fileName || 'input.bin.gz').trim() || 'input.bin.gz';
+  const stripped = normalized.replace(/\.gz$/i, '');
+  return stripped || 'input.bin';
+}
+
+function resolveBrowserGunzipMount(source, fallbackName) {
+  if (!source || typeof source !== 'object' || typeof source.slice !== 'function') {
+    throw new Error('Browser runtime gunzip requires a File/Blob-like source object with slice()');
+  }
+
+  const preferredName = typeof source.name === 'string' && source.name.trim()
+    ? source.name
+    : String(fallbackName || 'input.bin.gz');
+  const virtualName = stripGzipExtension(preferredName);
+
+  return {
+    mountOptions: {
+      files: [{
+        name: virtualName,
+        data: source,
+        mtime: source.lastModifiedDate,
+      }],
+    },
+    virtualName,
+  };
+}
+
+function resolveGunzipSource(runtime, source) {
+  if (isNodeRuntime(runtime)) {
+    if (!source || typeof source.path !== 'string') {
+      throw new Error('Node.js runtime gunzip source requires a local file path');
+    }
+
+    const sizeProbe = new GzipStream(source.path);
+
+    return {
+      kind: 'path',
+      path: source.path,
+      estimatedSize: sizeProbe.uncompressedSize,
+    };
+  }
+
+  const blobSource = source?.data ?? source;
+  if (!blobSource || typeof blobSource.slice !== 'function') {
+    throw new Error('Browser runtime gunzip source requires a File/Blob-like object');
+  }
+
+   const sizeProbe = new GzipStream(blobSource);
+
+  return {
+    kind: 'blob',
+    data: blobSource,
+    estimatedSize: sizeProbe.uncompressedSize,
+  };
+}
+
 export function ensureRuntimeDirs(FS) {
   ensureDir(FS, '/tmp');
   ensureDir(FS, '/tmp/log');
@@ -161,6 +220,102 @@ export function workerFsForNode(moduleInstance) {
   return NODEWORKERFS;
 }
 
+function workerFsForGunzip(moduleInstance, runtime) {
+  const FS = moduleInstance.FS;
+  const WORKERFS = moduleInstance.WORKERFS || FS.filesystems?.WORKERFS;
+  if (!WORKERFS) {
+    throw new Error('WORKERFS is required for gzip file mapping');
+  }
+
+  const GZIPWORKERFS = {
+    ...WORKERFS,
+    mount(mount) {
+      var root = WORKERFS.createNode(null, '/', WORKERFS.DIR_MODE, 0);
+
+      function base(pathname) {
+        var parts = String(pathname || '').split('/').filter((part) => !!part);
+        return parts[parts.length - 1] || 'input.bin';
+      }
+
+      for (var source of (mount.opts['files'] || [])) {
+        var virtualName = String(source.name || 'input.bin');
+        GZIPWORKERFS.createNode(
+          root,
+          base(virtualName),
+          WORKERFS.FILE_MODE,
+          0,
+          source,
+          source.mtime
+        );
+      }
+
+      return root;
+    },
+    createNode(parent, name, mode, dev, source, mtime) {
+      var node = FS.createNode(parent, name, mode);
+      node.mode = mode;
+      node.node_ops = WORKERFS.node_ops;
+      node.stream_ops = GZIPWORKERFS.stream_ops;
+      node.atime = node.mtime = node.ctime = (mtime || new Date()).getTime();
+      assert(WORKERFS.FILE_MODE !== WORKERFS.DIR_MODE);
+
+      if (mode === WORKERFS.FILE_MODE) {
+        var gzipSource = resolveGunzipSource(runtime, source);
+        node.size = gzipSource.estimatedSize ?? 0;
+        node.gzSource = gzipSource;
+      } else {
+        node.size = 4096;
+        node.contents = {};
+        node.gzSource = null;
+      }
+
+      if (parent) {
+        parent.contents[name] = node;
+      }
+
+      return node;
+    },
+    stream_ops: {
+      ...WORKERFS.stream_ops,
+      open(stream) {
+        var gzipSource = stream.node.gzSource;
+        if (!gzipSource) {
+          throw new Error('gzip source is missing');
+        }
+
+        var inputSource = gzipSource.kind === 'path'
+          ? gzipSource.path
+          : gzipSource.data;
+        stream.gzStream = new GzipStream(inputSource);
+        stream.gzStream.open();
+      },
+      close(stream) {
+        if (stream.gzStream) {
+          stream.gzStream.close();
+          stream.gzStream = null;
+        }
+      },
+      read(stream, buffer, offset, length, position) {
+        if (!stream.gzStream) {
+          throw new Error('gzip stream is not open');
+        }
+
+        const bytesRead = stream.gzStream.read(buffer, offset, length, position);
+        if (bytesRead > 0 && typeof position === 'number') {
+          const endPosition = position + bytesRead;
+          if (endPosition > stream.node.size) {
+            stream.node.size = endPosition;
+          }
+        }
+
+        return bytesRead;
+      },
+    },
+  };
+
+  return GZIPWORKERFS;
+}
+
 export function createFsWrapper(moduleInstance, options = {}) {
   if (!moduleInstance || !moduleInstance.FS) {
     throw new Error('moduleInstance.FS is required');
@@ -175,7 +330,7 @@ export function createFsWrapper(moduleInstance, options = {}) {
   ensureRuntimeDirs(FS);
   ensureDir(FS, mountRoot);
 
-  async function mountFile(name, source) {
+  async function mountFile(name, source, gunzip = false) {
     if (!source) {
       throw new Error('source is required');
     }
@@ -187,6 +342,13 @@ export function createFsWrapper(moduleInstance, options = {}) {
     ensureDir(FS, mountPoint);
 
     if (isBrowserRuntime(runtime)) {
+      if (gunzip) {
+        const browserGunzipMount = resolveBrowserGunzipMount(source, name);
+        const GZIPWORKERFS = workerFsForGunzip(moduleInstance, runtime);
+        FS.mount(GZIPWORKERFS, browserGunzipMount.mountOptions, mountPoint);
+        return `${mountPoint}/${browserGunzipMount.virtualName}`;
+      }
+
       const browserMount = resolveBrowserMount(source, name);
       try {
         FS.mount(WORKERFS, browserMount.mountOptions, mountPoint);
@@ -199,8 +361,6 @@ export function createFsWrapper(moduleInstance, options = {}) {
     }
 
     if (isNodeRuntime(runtime)) {
-      const NODEWORKERFS = workerFsForNode(moduleInstance);
-
       if (typeof source !== 'string') {
         throw new Error('Node.js runtime requires source to be a local file path string');
       }
@@ -208,6 +368,15 @@ export function createFsWrapper(moduleInstance, options = {}) {
       const pathModule = await import('node:path');
       const absolutePath = pathModule.resolve(String(source));
       const baseName = pathModule.basename(absolutePath);
+
+      if (gunzip) {
+        const GZIPWORKERFS = workerFsForGunzip(moduleInstance, runtime);
+        const virtualName = stripGzipExtension(baseName);
+        FS.mount(GZIPWORKERFS, { files: [{ path: absolutePath, name: virtualName }] }, mountPoint);
+        return `${mountPoint}/${virtualName}`;
+      }
+
+      const NODEWORKERFS = workerFsForNode(moduleInstance);
       FS.mount(NODEWORKERFS, { files: [{path: source, name: baseName}] }, mountPoint);
       return `${mountPoint}/${baseName}`;
     }

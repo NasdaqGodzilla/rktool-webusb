@@ -265,7 +265,7 @@
           dlLoaderBtn.disabled = true;
           return;
         }
-        selectedLoader = await wrapper.mountFile('MiniLoaderAll.bin', loader);
+        selectedLoader = await wrapper.mountFile('loader', loader);
         appendLine(`已选择Loader: ${loader.name} (${loader.size} bytes)`);
         dlLoaderBtn.disabled = false;
       } catch (error) {
