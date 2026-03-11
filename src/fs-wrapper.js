@@ -156,9 +156,6 @@ export function workerFsForNode(moduleInstance) {
       read(stream, buffer, offset, length, position) {
         return fs.readSync(stream.nfd, buffer, offset, length, position);
       },
-      write(stream, buffer, offset, length, position) {
-        return fs.writeSync(stream.nfd, buffer, offset, length, position);
-      },
     },
   };
   return NODEWORKERFS;
