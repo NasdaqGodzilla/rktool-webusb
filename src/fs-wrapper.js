@@ -1,11 +1,11 @@
 import { GzipStream } from './gzip-stream.js';
-import { NodeBlobReaderSync } from './node-blob.js';
 
 function assert(condition, text) {
   if (!condition) {
     throw new Error(text || 'Assertion failed');
   }
 }
+
 
 const DEFAULT_MOUNT_ROOT = '/tmp/mounts';
 
@@ -144,7 +144,10 @@ export function ensureRuntimeDirs(FS) {
   ensureDir(FS, DEFAULT_MOUNT_ROOT);
 }
 
-function workerFsForNode(moduleInstance) {
+async function workerFsForNode(moduleInstance) {
+
+  const NodeBlobReaderSync = (await import('./node-blob.js')).NodeBlobReaderSync;
+
   const FS = moduleInstance.FS;
   const WORKERFS = moduleInstance.WORKERFS || FS.filesystems?.WORKERFS;
   if (!WORKERFS) {
@@ -298,7 +301,7 @@ function workerFsForGunzip(moduleInstance) {
   return GZIPWORKERFS;
 }
 
-export function createFsWrapper(moduleInstance, options = {}) {
+export async function createFsWrapper(moduleInstance, options = {}) {
   if (!moduleInstance || !moduleInstance.FS) {
     throw new Error('moduleInstance.FS is required');
   }
@@ -308,7 +311,7 @@ export function createFsWrapper(moduleInstance, options = {}) {
   const FS = moduleInstance.FS;
   const WORKERFS = moduleInstance.WORKERFS || FS.filesystems?.WORKERFS;
   const NODEFS = moduleInstance.NODEFS || FS.filesystems?.NODEFS;
-  const NODEWORKERFS = isNodeRuntime(runtime) ? workerFsForNode(moduleInstance) : null;
+  const NODEWORKERFS = isNodeRuntime(runtime) ? await workerFsForNode(moduleInstance) : null;
 
   ensureRuntimeDirs(FS);
   ensureDir(FS, mountRoot);

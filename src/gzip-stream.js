@@ -1,7 +1,6 @@
 /**
  * 仅支持在Nodejs或者浏览器Worker环境中使用，主线程浏览器环境不支持同步读取Blob，无法使用GzipStream
  */
-import { NodeBlobReaderSync } from './node-blob.js';
 
 const DEFAULT_PREFIX_CACHE_SIZE = 4 * 1024;
 const DEFAULT_COMPRESSED_CHUNK_SIZE = 64 * 1024;
@@ -14,6 +13,7 @@ function isNodeRuntime() {
 }
 
 let nodeRequire = null;
+const NodeBlobReaderSync = isNodeRuntime() ? (await import('./node-blob.js')).NodeBlobReaderSync : null;
 if (isNodeRuntime()) {
 	const { createRequire } = await import('node:module');
 	nodeRequire = createRequire(import.meta.url);

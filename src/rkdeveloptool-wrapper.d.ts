@@ -22,6 +22,7 @@ export interface RunCommandOptions {
   requestDevice?: boolean;
   usbFilters?: Array<{ vendorId?: number; productId?: number }>;
   fileSource?: FileSource | string;
+  gunzip?: boolean;
   fileName?: string;
   replaceToken?: string;
 }

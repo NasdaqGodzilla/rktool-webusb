@@ -107,6 +107,33 @@ function toUint8Array(data) {
   return new Uint8Array(0);
 }
 
+const CRC32_TABLE = new Uint32Array(256);
+for (let tableIndex = 0; tableIndex < 256; tableIndex++) {
+  let tableValue = tableIndex;
+  for (let bitIndex = 0; bitIndex < 8; bitIndex++) {
+    if ((tableValue & 1) !== 0) {
+      tableValue = (tableValue >>> 1) ^ 0xEDB88320;
+    } else {
+      tableValue = tableValue >>> 1;
+    }
+  }
+  CRC32_TABLE[tableIndex] = tableValue >>> 0;
+}
+
+function crc32(data, seed = 0) {
+  const bytes = data instanceof Uint8Array
+    ? data
+    : Uint8Array.from(Array.isArray(data) ? data : []);
+  let crc = (seed ^ 0xFFFFFFFF) >>> 0;
+
+  for (let index = 0; index < bytes.length; index++) {
+    const tableIndex = (crc ^ bytes[index]) & 0xFF;
+    crc = (crc >>> 8) ^ CRC32_TABLE[tableIndex];
+  }
+
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
 function readUint32LE(bytes, offset) {
   if (bytes.byteLength < offset + 4) {
     return 0;
@@ -132,7 +159,7 @@ function createCswPayloadFromCbw(cbwPayload, status = 0) {
   return cswPayload;
 }
 
-function createRockusbWebUsbDevice(options = {}) {
+function createRockusbWebUsbDevice(options = {}, dumpOutput) {
   const vid = options.vid ?? 0x2207;
   const pid = options.pid ?? 0x320a;
   const bcdUsb = options.bcdUsb ?? 0x0200;
@@ -269,6 +296,7 @@ function createRockusbWebUsbDevice(options = {}) {
     },
     async transferOut(endpointNumber, data) {
       const payload = toUint8Array(data);
+      dumpOutput && dumpOutput(payload);
 
       transportState.transferOutCalls.push({ endpointNumber, length: payload.byteLength });
 
@@ -834,6 +862,108 @@ test('real flow: wl fw fixture mounts into VFS before command', {
       assert.equal(transportState.transferInCalls.length > 0, true);
       } finally {
         loaderBlob.close();
+      }
+    });
+  });
+});
+
+
+test('real flow: wl with gunzip', {
+  skip: !hasBuiltWasmArtifacts(),
+  concurrency: false,
+}, async () => {
+  await runRealFlowInOrder(async () => {
+    
+    const rawimage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img');
+    assert.equal(fs.existsSync(rawimage), true, 'raw image must exist');
+    const gzipedImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.gz');
+    assert.equal(fs.existsSync(gzipedImage), true, 'gziped image must exist');
+    const openwrtImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.gz-withmeta');
+    assert.equal(fs.existsSync(openwrtImage), true, 'openwrt image must exist');
+
+    let crc = 0;
+    const { device, transportState } = createRockusbWebUsbDevice({
+      vid: 0x2207,
+      pid: 0x320a,
+      bcdUsb: 0x0200,
+    }, (payload) => {
+      const isCbwPacket = payload.byteLength === 31 && readUint32LE(payload, 0) === 0x43425355;
+      if (isCbwPacket) {
+        return;
+      }
+      crc = crc32(payload, crc);
+    });
+  
+    const { webUsb, state } = createMockUsb({
+      devices: [device],
+      requestDeviceResult: device,
+    });
+
+    await withMockNavigatorUsb(webUsb, async () => {
+      const wrapper = await createRKDevelopToolWrapper({
+        runtime: 'node',
+        webUsb,
+        onStdout: (text) => {
+          console.debug(`STDOUT: ${text}`);
+        },
+        onStderr: (text) => {
+          console.debug(`STDERR: ${text}`);
+        },
+        onLogWrite: (text) => {
+          console.debug(`Log: ${text}`);
+        },
+      });
+      const rawBlob = new NodeBlob(rawimage);
+      const gzipedBlob = new NodeBlob(gzipedImage);
+      const openwrtBlob = new NodeBlob(openwrtImage);
+      try {
+        let result = await wrapper.runCommand(['wl', '0', '$FILE'], {
+          requestDevice: true,
+          usbFilters: [{ vendorId: 0x2207 }],
+          fileName: 'raw.img',
+          fileSource: rawBlob,
+          replaceToken: '$FILE',
+        });
+
+        console.debug('wl command completed with', result.exitCode);
+        console.debug('transport statistic: open=', transportState.openCallCount, 'out=', transportState.transferOutCalls.length, 'in=', transportState.transferInCalls.length);
+
+        assert.equal(typeof result.exitCode, 'number');
+        assert.equal(state.requestDeviceCallCount, 1);
+        assert.equal(state.getDevicesCallCount, 1);
+        assert.equal(transportState.openCallCount, 2);
+        assert.equal(transportState.controlTransferInCalls.length > 0, true);
+        assert.equal(transportState.transferOutCalls.length > 0, true);
+        assert.equal(transportState.transferInCalls.length > 0, true);
+        const rawCrc = crc;
+        crc = 0;
+        result = await wrapper.runCommand(['wl', '0', '$FILE'], {
+          requestDevice: false,
+          usbFilters: [{ vendorId: 0x2207 }],
+          fileName: 'gziped.img.gz',
+          fileSource: gzipedBlob,
+          gunzip: true,
+          replaceToken: '$FILE',
+        });
+
+        assert.equal(crc, rawCrc, 'gunzipped output should match raw image output');
+
+        crc = 0;
+        result = await wrapper.runCommand(['wl', '0', '$FILE'], {
+          requestDevice: false,
+          usbFilters: [{ vendorId: 0x2207 }],
+          fileName: 'openwrt.img.gz',
+          fileSource: openwrtBlob,
+          gunzip: true,
+          replaceToken: '$FILE',
+        });
+
+        assert.equal(crc, rawCrc, 'openwrt output should match raw image output');
+
+      } finally {
+        rawBlob.close();
+        gzipedBlob.close();
+        openwrtBlob.close();
       }
     });
   });

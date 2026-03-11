@@ -65,7 +65,7 @@ test('mountFile uses WORKERFS in browser runtime', async () => {
     WORKERFS: { kind: 'WORKERFS' },
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
   const fakeFile = { name: 'firmware.bin' };
   const mountedPath = await wrapper.mountFile('firmware', fakeFile);
 
@@ -87,7 +87,7 @@ test('mountFile uses WORKERFS from FS.filesystems fallback', async () => {
     FS,
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
   const fakeFile = { name: 'firmware.bin' };
   const mountedPath = await wrapper.mountFile('firmware', fakeFile);
 
@@ -107,7 +107,7 @@ test('mountFile with gunzip uses GZIPWORKERFS in browser runtime', async () => {
     WORKERFS: { kind: 'WORKERFS' },
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
   const fakeFile = {
     name: 'firmware.img.gz',
     size: 128,
@@ -135,7 +135,7 @@ test('mountFile with gunzip rejects invalid browser source', async () => {
     WORKERFS: { kind: 'WORKERFS' },
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
 
   await assert.rejects(
     () => wrapper.mountFile('firmware', { name: 'firmware.img.gz' }, true),
@@ -151,7 +151,7 @@ test('mountFile uses NODEFS in node runtime', async () => {
     WORKERFS: { kind: 'WORKERFS' },
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'node' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'node' });
   await withTempNodeBlob('test-update.img', async (blob) => {
     const mountedPath = await wrapper.mountFile('image', blob);
 
@@ -175,7 +175,7 @@ test('mountFile uses NODEFS from FS.filesystems fallback', async () => {
     FS,
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'node' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'node' });
   await withTempNodeBlob('test-update.img', async (blob) => {
     const mountedPath = await wrapper.mountFile('image', blob);
 
@@ -197,7 +197,7 @@ test('mountFile with gunzip uses GZIPWORKERFS in node runtime', async () => {
     WORKERFS: { kind: 'WORKERFS' },
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'node' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'node' });
   await withTempNodeBlob('test-update.img.gz', async (blob) => {
     const mountedPath = await wrapper.mountFile('image', blob, true);
 
@@ -228,7 +228,7 @@ test('mountFile throws when WORKERFS mount fails', async () => {
     FS,
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
   const fakeFile = {
     name: 'firmware.bin',
   };
@@ -247,7 +247,7 @@ test('mountFile throws when WORKERFS is unavailable in browser runtime', async (
     FS,
   };
 
-  const wrapper = createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
   const fakeFile = { name: 'firmware.bin' };
 
   await assert.rejects(
@@ -262,7 +262,7 @@ test('createFsWrapper throws when WORKERFS is unavailable in node runtime', asyn
     FS,
   };
 
-  await assert.throws(
+  await assert.rejects(
     () => createFsWrapper(moduleInstance, { runtime: 'node' }),
     /WORKERFS is required for file mapping/
   );
