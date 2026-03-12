@@ -878,8 +878,13 @@ test('real flow: wl with gunzip', {
     assert.equal(fs.existsSync(rawimage), true, 'raw image must exist');
     const gzipedImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.gz');
     assert.equal(fs.existsSync(gzipedImage), true, 'gziped image must exist');
-    const openwrtImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.gz-withmeta');
-    assert.equal(fs.existsSync(openwrtImage), true, 'openwrt image must exist');
+    const openwrtGzImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.gz-withmeta');
+    assert.equal(fs.existsSync(openwrtGzImage), true, 'openwrt gz image must exist');
+
+    const xzImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.xz');
+    assert.equal(fs.existsSync(xzImage), true, 'xz image must exist');
+    const openwrtXzImage = path.join(projectRoot, 'tests', 'fw', 'radxa-e54c-spi-flash-image.img.xz-withmeta');
+    assert.equal(fs.existsSync(openwrtXzImage), true, 'openwrt xz image must exist');
 
     let crc = 0;
     const { device, transportState } = createRockusbWebUsbDevice({
@@ -915,7 +920,10 @@ test('real flow: wl with gunzip', {
       });
       const rawBlob = new NodeBlob(rawimage);
       const gzipedBlob = new NodeBlob(gzipedImage);
-      const openwrtBlob = new NodeBlob(openwrtImage);
+      const openwrtGzBlob = new NodeBlob(openwrtGzImage);
+      const xzBlob = new NodeBlob(xzImage);
+      const openwrtXzBlob = new NodeBlob(openwrtXzImage);
+
       try {
         let result = await wrapper.runCommand(['wl', '0', '$FILE'], {
           requestDevice: true,
@@ -953,17 +961,42 @@ test('real flow: wl with gunzip', {
           requestDevice: false,
           usbFilters: [{ vendorId: 0x2207 }],
           fileName: 'openwrt.img.gz',
-          fileSource: openwrtBlob,
+          fileSource: openwrtGzBlob,
           gunzip: true,
           replaceToken: '$FILE',
         });
 
-        assert.equal(crc, rawCrc, 'openwrt output should match raw image output');
+        assert.equal(crc, rawCrc, 'openwrt gz output should match raw image output');
 
+        crc = 0;
+        result = await wrapper.runCommand(['wl', '0', '$FILE'], {
+          requestDevice: false,
+          usbFilters: [{ vendorId: 0x2207 }],
+          fileName: 'gziped.img.xz',
+          fileSource: xzBlob,
+          gunzip: true,
+          replaceToken: '$FILE',
+        });
+
+        assert.equal(crc, rawCrc, 'xzed output should match raw image output');
+
+        crc = 0;
+        result = await wrapper.runCommand(['wl', '0', '$FILE'], {
+          requestDevice: false,
+          usbFilters: [{ vendorId: 0x2207 }],
+          fileName: 'openwrt.img.xz',
+          fileSource: openwrtXzBlob,
+          gunzip: true,
+          replaceToken: '$FILE',
+        });
+
+        assert.equal(crc, rawCrc, 'openwrt xz output should match raw image output');
       } finally {
         rawBlob.close();
         gzipedBlob.close();
-        openwrtBlob.close();
+        openwrtGzBlob.close();
+        xzBlob.close();
+        openwrtXzBlob.close();
       }
     });
   });

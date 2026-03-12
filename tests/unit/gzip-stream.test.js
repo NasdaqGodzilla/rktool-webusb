@@ -4,8 +4,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { GzipStream } from '../../src/gzip-stream.js';
+import {
+  GzipStream,
+} from '../../src/gzip-stream.js';
+import { XzStream } from '../../src/xz-stream.js';
 import { NodeBlob } from '../../src/node-blob.js';
+
+const XZ_PAYLOAD_4096_BASE64 = '/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4A//AP5dAAAAUlAKhPmbsoAhqWnWJ+A+BlpfBI1T1AS6OVcFCcFVJN6duHFZMWChn/lvSXPyyOqMuhqLKWkhgP4zg2avRm3snomKC4PwPA6Jjj/tX+eekNkc/zL0suA5UbLSFBW0xXG62wbjeZqfuzjBsACskwuqBhkDEggVW5vISPAyLv4toIfI8KTg0lHrjWdWkrJNhMXxhjHfamJbwnkt2fc8c7p0dAfYPKlWIiShZvhahF8wZ9L2S0kufyDr2/gQDpR4d8c/a++0zZXib/ZEbgbPC4Iay9t68FeNmP+QwD7mwRJBde4DnqjoegSV0b7AfmdyeuC6vVn/y92z0gXdygAAAAAAYM+XaK2iHMEAAZoCgCAAAENCfNCxxGf7AgAAAAAEWVo=';
 
 function createPayload(size) {
   const payload = new Uint8Array(size);
@@ -13,6 +18,10 @@ function createPayload(size) {
     payload[index] = index % 251;
   }
   return payload;
+}
+
+function decodeBase64Bytes(base64Text) {
+  return new Uint8Array(Buffer.from(base64Text, 'base64'));
 }
 
 function appendOpenWrtMetadata(gzipBytes, blockSizes) {
@@ -41,15 +50,15 @@ function appendOpenWrtMetadata(gzipBytes, blockSizes) {
   return output;
 }
 
-async function withTempGzip(payload, callback) {
+async function withTempCompressedBytes(fileName, bytes, callback) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rktool-gzip-'));
-  const gzipPath = path.join(tempDir, 'payload.bin.gz');
+  const sourcePath = path.join(tempDir, fileName);
 
   try {
-    await fs.writeFile(gzipPath, gzipSync(payload));
-    const sourceBlob = new NodeBlob(gzipPath);
+    await fs.writeFile(sourcePath, bytes);
+    const sourceBlob = new NodeBlob(sourcePath);
     try {
-      return await callback(sourceBlob, gzipPath);
+      return await callback(sourceBlob, sourcePath);
     } finally {
       sourceBlob.close();
     }
@@ -58,21 +67,35 @@ async function withTempGzip(payload, callback) {
   }
 }
 
-async function withTempGzipBytes(gzipBytes, callback) {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rktool-gzip-'));
-  const gzipPath = path.join(tempDir, 'payload.bin.gz');
+async function withTempGzip(payload, callback) {
+  return withTempCompressedBytes('payload.bin.gz', gzipSync(payload), callback);
+}
 
-  try {
-    await fs.writeFile(gzipPath, gzipBytes);
-    const sourceBlob = new NodeBlob(gzipPath);
-    try {
-      return await callback(sourceBlob, gzipPath);
-    } finally {
-      sourceBlob.close();
+async function withTempGzipBytes(gzipBytes, callback) {
+  return withTempCompressedBytes('payload.bin.gz', gzipBytes, callback);
+}
+
+function readFully(stream, totalSize, chunkSize = 257) {
+  const output = new Uint8Array(totalSize);
+  let totalRead = 0;
+
+  while (totalRead < output.byteLength) {
+    const bytesRead = stream.read(
+      output,
+      totalRead,
+      Math.min(chunkSize, output.byteLength - totalRead),
+      totalRead
+    );
+    if (bytesRead === 0) {
+      break;
     }
-  } finally {
-    await fs.rm(tempDir, { recursive: true, force: true });
+    totalRead += bytesRead;
   }
+
+  return {
+    output,
+    totalRead,
+  };
 }
 
 test('constructor resolves uncompressed size hint from gzip trailer', async () => {
@@ -90,6 +113,13 @@ test('constructor rejects path-string source in node runtime', async () => {
   await withTempGzip(payload, async (_gzipBlob, gzipPath) => {
     assert.throws(() => new GzipStream(gzipPath), /Blob-like/);
   });
+});
+
+test('constructor throws when source is null', () => {
+  assert.throws(
+    () => new GzipStream(null),
+    /Blob-like object with slice\(\)/
+  );
 });
 
 test('constructor ignores OpenWrt metadata footer chain and corrects sizes', async () => {
@@ -216,3 +246,59 @@ test('short payload reads from cache and returns 0 at EOF', async () => {
     }
   });
 });
+
+test('XzStream supports built-in xz format with sync decoding', async () => {
+  const payload = createPayload(4096);
+  const xzBytes = decodeBase64Bytes(XZ_PAYLOAD_4096_BASE64);
+
+  await withTempCompressedBytes('payload.bin.xz', xzBytes, async (xzBlob) => {
+    const stream = new XzStream(xzBlob, {
+      prefixCacheSize: 256,
+    });
+
+    assert.equal(stream.uncompressedSize, payload.byteLength);
+
+    stream.open();
+    try {
+      const { output, totalRead } = readFully(stream, payload.byteLength, 233);
+      assert.equal(totalRead, payload.byteLength);
+      assert.deepEqual(output, payload);
+
+      const eofRead = stream.read(new Uint8Array(16), 0, 16, payload.byteLength);
+      assert.equal(eofRead, 0);
+    } finally {
+      stream.close();
+    }
+  });
+});
+
+test('XzStream ignores OpenWrt metadata footer chain and corrects sizes', async () => {
+  const payload = createPayload(4096);
+  const rawXz = decodeBase64Bytes(XZ_PAYLOAD_4096_BASE64);
+  const metadataBlocks = [64, 96, 160];
+  const metadataSize = metadataBlocks.reduce((sum, size) => sum + size, 0);
+  const withMetadata = appendOpenWrtMetadata(rawXz, metadataBlocks);
+
+  await withTempCompressedBytes('payload.bin.xz', withMetadata, async (xzBlob) => {
+    const stream = new XzStream(xzBlob, {
+      prefixCacheSize: 256,
+    });
+
+    assert.equal(stream.metadataSize, metadataSize);
+    assert.equal(stream.compressedSize, rawXz.byteLength);
+    assert.equal(stream.uncompressedSize, payload.byteLength);
+
+    stream.open();
+    try {
+      const { output, totalRead } = readFully(stream, payload.byteLength, 233);
+      assert.equal(totalRead, payload.byteLength);
+      assert.deepEqual(output, payload);
+
+      const eofRead = stream.read(new Uint8Array(16), 0, 16, payload.byteLength);
+      assert.equal(eofRead, 0);
+    } finally {
+      stream.close();
+    }
+  });
+});
+

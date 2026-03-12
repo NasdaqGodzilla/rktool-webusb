@@ -100,7 +100,7 @@ test('mountFile uses WORKERFS from FS.filesystems fallback', async () => {
   assert.equal(mountRecord.options.files[0], fakeFile);
 });
 
-test('mountFile with gunzip uses GZIPWORKERFS in browser runtime', async () => {
+test('mountFile with gunzip uses DECWORKERFS in browser runtime', async () => {
   const FS = createMockFs();
   const moduleInstance = {
     FS,
@@ -124,8 +124,67 @@ test('mountFile with gunzip uses GZIPWORKERFS in browser runtime', async () => {
   assert.ok(mountRecord);
   assert.equal(mountRecord.type.kind, 'WORKERFS');
   assert.ok(mountRecord.type.mount);
-  assert.equal(mountRecord.options.files[0].name, 'firmware.img');
+  assert.equal(mountRecord.options.files[0].name, 'firmware.img.gz');
+  assert.equal(mountRecord.options.files[0].virtualName, 'firmware.img');
+  assert.equal(mountRecord.options.files[0].decFormat, 'gzip');
   assert.equal(mountRecord.options.files[0].data, fakeFile);
+});
+
+test('mountFile with gunzip supports xz suffix in browser runtime', async () => {
+  const FS = createMockFs();
+  const moduleInstance = {
+    FS,
+    WORKERFS: { kind: 'WORKERFS' },
+  };
+
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const fakeFile = {
+    name: 'firmware.img.xz',
+    size: 128,
+    slice() {
+      return this;
+    },
+  };
+
+  const mountedPath = await wrapper.mountFile('firmware', fakeFile, true);
+
+  assert.match(mountedPath, /^\/tmp\/mounts\/.+\/firmware\.img$/);
+  const mountPoint = mountedPath.slice(0, mountedPath.lastIndexOf('/'));
+  const mountRecord = FS.mounts.get(mountPoint);
+  assert.ok(mountRecord);
+  assert.equal(mountRecord.type.kind, 'WORKERFS');
+  assert.ok(mountRecord.type.mount);
+  assert.equal(mountRecord.options.files[0].name, 'firmware.img.xz');
+  assert.equal(mountRecord.options.files[0].virtualName, 'firmware.img');
+  assert.equal(mountRecord.options.files[0].decFormat, 'xz');
+  assert.equal(mountRecord.options.files[0].data, fakeFile);
+});
+
+test('mountFile with gunzip prefers fallback suffix when source name is unsupported', async () => {
+  const FS = createMockFs();
+  const moduleInstance = {
+    FS,
+    WORKERFS: { kind: 'WORKERFS' },
+  };
+
+  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
+  const fakeFile = {
+    name: 'firmware.img.gz-withmeta',
+    size: 128,
+    slice() {
+      return this;
+    },
+  };
+
+  const mountedPath = await wrapper.mountFile('firmware.img.gz', fakeFile, true);
+
+  assert.match(mountedPath, /^\/tmp\/mounts\/.+\/firmware\.img$/);
+  const mountPoint = mountedPath.slice(0, mountedPath.lastIndexOf('/'));
+  const mountRecord = FS.mounts.get(mountPoint);
+  assert.ok(mountRecord);
+  assert.equal(mountRecord.options.files[0].name, 'firmware.img.gz');
+  assert.equal(mountRecord.options.files[0].virtualName, 'firmware.img');
+  assert.equal(mountRecord.options.files[0].decFormat, 'gzip');
 });
 
 test('mountFile with gunzip rejects invalid browser source', async () => {
@@ -189,7 +248,7 @@ test('mountFile uses NODEFS from FS.filesystems fallback', async () => {
   });
 });
 
-test('mountFile with gunzip uses GZIPWORKERFS in node runtime', async () => {
+test('mountFile with gunzip uses DECWORKERFS in node runtime', async () => {
   const FS = createMockFs();
   const moduleInstance = {
     FS,
@@ -207,7 +266,9 @@ test('mountFile with gunzip uses GZIPWORKERFS in node runtime', async () => {
     assert.ok(mountRecord);
     assert.equal(mountRecord.type.kind, 'WORKERFS');
     assert.ok(mountRecord.type.mount);
-    assert.equal(mountRecord.options.files[0].name, 'test-update.img');
+    assert.equal(mountRecord.options.files[0].name, 'test-update.img.gz');
+    assert.equal(mountRecord.options.files[0].virtualName, 'test-update.img');
+    assert.equal(mountRecord.options.files[0].decFormat, 'gzip');
     assert.equal(mountRecord.options.files[0].data, blob);
   });
 });

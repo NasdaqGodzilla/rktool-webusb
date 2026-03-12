@@ -44,7 +44,7 @@
   </div>
   <div>
     <label for="pick-file">选择固件</label>
-    <input id="pick-file" type="file" accept=".bin,.img,.gz" />
+    <input id="pick-file" type="file" accept=".bin,.img,.gz,.xz" />
   </div>
 
   <div>
@@ -333,7 +333,7 @@
         const startTime = new Date().getTime();
         result = await wrapper.runCommand(['wl', '0', '$FILE'], {
           fileSource: selectedFile,
-          gunzip: selectedFile.name.endsWith('.img.gz'),
+          gunzip: selectedFile.name.endsWith('.img.gz') || selectedFile.name.endsWith('.img.xz'),
           fileName: "fw",
           replaceToken: '$FILE',
         });
