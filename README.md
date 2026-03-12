@@ -99,4 +99,5 @@ npm run test:build
 - https://github.com/GoogleChromeLabs/web-gphoto2/blob/main/Makefile
 - https://developer.mozilla.org/en-US/docs/WebAssembly
 - https://opensource.rock-chips.com/wiki_Rkdeveloptool
+- https://github.com/aezizhu/rkfw-unpack
 
