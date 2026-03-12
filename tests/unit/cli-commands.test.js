@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRKDevelopToolWrapper } from '../../src/rkdeveloptool-wrapper.js';
 import { NodeBlob } from '../../src/node-blob.js';
+// import { parseRkfwBlob } from '../../src/rkfw-parser.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -926,6 +927,7 @@ test('real flow: wl with gunzip', {
       const openwrtGzBlob = new NodeBlob(openwrtGzImage);
       const xzBlob = new NodeBlob(xzImage);
       const openwrtXzBlob = new NodeBlob(openwrtXzImage);
+      // const rkfw = new NodeBlob("/Volumes/data/blob/rk3568/r68s-update-0610.img");
 
       try {
         let result = await wrapper.runCommand(['wl', '0', '$FILE'], {
@@ -995,6 +997,12 @@ test('real flow: wl with gunzip', {
         });
 
         assert.equal(crc, rawCrc, 'openwrt xz output should match raw image output');
+
+        // const meta = await parseRkfwBlob(rkfw);
+        // const {mountPoint} = await wrapper.mountFile('rkfw', {source: rkfw, meta}, false, true);
+        // wrapper.umount(mountPoint);
+
+
       } finally {
         rawBlob.close();
         gzipedBlob.close();

@@ -4,7 +4,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createFsWrapper, ensureRuntimeDirs } from '../../src/fs-wrapper.js';
+import { parseRkfwBlob } from '../../src/rkfw-parser.js';
 import { NodeBlob } from '../../src/node-blob.js';
+
+const REAL_IMAGE_PATH = '/Volumes/data/blob/rk3568/r68s-update-0610.img';
 
 function createMockFs() {
   const dirs = new Set(['/']);
@@ -300,11 +303,8 @@ test('mountFile throws when WORKERFS is unavailable in browser runtime', async (
     FS,
   };
 
-  const wrapper = await createFsWrapper(moduleInstance, { runtime: 'browser' });
-  const fakeFile = { name: 'firmware.bin' };
-
   await assert.rejects(
-    () => wrapper.mountFile('firmware', fakeFile),
+    () => createFsWrapper(moduleInstance, { runtime: 'browser' }),
     /WORKERFS is required for file mapping/
   );
 });

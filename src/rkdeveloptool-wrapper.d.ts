@@ -43,7 +43,7 @@ export interface RkdeveloptoolWrapper {
   fs: unknown;
   requestDevice(filters?: Array<{ vendorId?: number; productId?: number }>): Promise<unknown>;
   getDevices(): Promise<unknown[]>;
-  mountFile(name: string, source: FileSource | string): Promise<MountFileResult>;
+  mountFile(name: string, source: FileSource | string | { source:FileSource, meta: unknown}, gunzip?: boolean, rkfw?: boolean): Promise<MountFileResult>;
   umount(mountPoint: string): void;
   runCommand(args: string[], options?: RunCommandOptions): Promise<RunCommandResult>;
 }

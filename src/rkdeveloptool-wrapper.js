@@ -273,7 +273,7 @@ export async function createRKDevelopToolWrapper(options = {}) {
     fs,
     requestDevice: (filters) => platform.requestDevice(filters),
     getDevices: () => platform.getDevices(),
-    mountFile: (name, source, gunzip) => fs.mountFile(name, source, gunzip),
+    mountFile: (name, source, gunzip, rkfw) => fs.mountFile(name, source, gunzip, rkfw),
     umount: (mountPoint) => fs.unmount(mountPoint),
     runCommand,
   };
