@@ -8,7 +8,7 @@ import {
   GzipStream,
 } from '../../src/gzip-stream.js';
 import { XzStream } from '../../src/xz-stream.js';
-import { NodeBlob } from '../../src/node-blob.js';
+import { NodeBlob } from '../../src/node/node-blob.js';
 
 const XZ_PAYLOAD_4096_BASE64 = '/Td6WFoAAATm1rRGAgAhARYAAAB0L+Wj4A//AP5dAAAAUlAKhPmbsoAhqWnWJ+A+BlpfBI1T1AS6OVcFCcFVJN6duHFZMWChn/lvSXPyyOqMuhqLKWkhgP4zg2avRm3snomKC4PwPA6Jjj/tX+eekNkc/zL0suA5UbLSFBW0xXG62wbjeZqfuzjBsACskwuqBhkDEggVW5vISPAyLv4toIfI8KTg0lHrjWdWkrJNhMXxhjHfamJbwnkt2fc8c7p0dAfYPKlWIiShZvhahF8wZ9L2S0kufyDr2/gQDpR4d8c/a++0zZXib/ZEbgbPC4Iay9t68FeNmP+QwD7mwRJBde4DnqjoegSV0b7AfmdyeuC6vVn/y92z0gXdygAAAAAAYM+XaK2iHMEAAZoCgCAAAENCfNCxxGf7AgAAAAAEWVo=';
 

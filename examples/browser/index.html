@@ -87,8 +87,8 @@
   </footer>
 
   <script type="module">
-    import { createRKToolWorker } from './src/worker-proxy.js';
-    import { isRkfwBlob, parseRkfwBlob } from './src/rkfw-parser.js';
+    import { createRKToolWorker } from './src/browser/worker-proxy.js?v=RKTOOLSRC_VER';
+    import { isRkfwBlob, parseRkfwBlob } from './src/rkfw-parser.js?v=RKTOOLSRC_VER';
 
     const output = document.getElementById('output');
     const pickLoaderInput = document.getElementById('pick-loader');
@@ -263,7 +263,7 @@
     }
 
     const wrapper = await createRKToolWorker({
-      workerPath: './src/rktool-worker.js',
+      workerPath: './src/browser/rktool-worker.js?v=RKTOOLSRC_VER',
       requestDevice,
       onStdout: appendStdio,
       onStderr: appendLine,

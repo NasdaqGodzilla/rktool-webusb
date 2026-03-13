@@ -97,4 +97,8 @@ emcmake cmake \
 
 cmake --build "$WASM_BUILD_DIR" --parallel "$(cpu_count)"
 
+RKWASM_HASH=$(crc32 "$DIST_DIR/rkdeveloptool.wasm")
+sed -i '' -e "s#rkdeveloptool.wasm'#rkdeveloptool.wasm?v=$RKWASM_HASH'#g" \
+  -e "s#rkdeveloptool.wasm\"#rkdeveloptool.wasm?v=$RKWASM_HASH\"#g" "$DIST_DIR/rkdeveloptool.js"
+
 echo "WASM build complete. Outputs are in: $DIST_DIR"

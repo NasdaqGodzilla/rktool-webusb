@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRKDevelopToolWrapper } from '../../src/rkdeveloptool-wrapper.js';
-import { NodeBlob } from '../../src/node-blob.js';
+import { NodeBlob } from '../../src/node/node-blob.js';
 // import { parseRkfwBlob } from '../../src/rkfw-parser.js';
 
 const __filename = fileURLToPath(import.meta.url);

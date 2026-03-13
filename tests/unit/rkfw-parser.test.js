@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { parseRkfwBlob } from '../../src/rkfw-parser.js';
-import { NodeBlob } from '../../src/node-blob.js';
+import { NodeBlob } from '../../src/node/node-blob.js';
 
 const REAL_IMAGE_PATH = '/Volumes/data/blob/rk3568/r68s-update-0610.img';
 

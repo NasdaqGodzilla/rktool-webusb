@@ -209,7 +209,7 @@ export class RKToolWorkerProxy {
  * 创建 Worker 代理实例
  */
 export async function createRKToolWorker(options = {}) {
-  const workerPath = options.workerPath || './rktool-worker.js';
+  const workerPath = options.workerPath || './rktool-worker.js?v=RKTOOLSRC_VER';
   const proxy = new RKToolWorkerProxy(workerPath);
 
   try {

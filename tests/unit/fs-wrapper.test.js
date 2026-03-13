@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createFsWrapper, ensureRuntimeDirs } from '../../src/fs-wrapper.js';
 import { parseRkfwBlob } from '../../src/rkfw-parser.js';
-import { NodeBlob } from '../../src/node-blob.js';
+import { NodeBlob } from '../../src/node/node-blob.js';
 
 const REAL_IMAGE_PATH = '/Volumes/data/blob/rk3568/r68s-update-0610.img';
 

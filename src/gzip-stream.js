@@ -2,7 +2,7 @@ import {
 	InternalCompressedStream,
 	normalizeSize,
 	toUint8Array,
-} from './compressed-stream.js';
+} from './compressed-stream.js?v=RKTOOLSRC_VER';
 
 function isNodeRuntime() {
 	return typeof process !== 'undefined' && !!(process.versions && process.versions.node);

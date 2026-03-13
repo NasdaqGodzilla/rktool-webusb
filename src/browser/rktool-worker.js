@@ -1,4 +1,4 @@
-import { createRKDevelopToolWrapper } from './rkdeveloptool-wrapper.js';
+import { createRKDevelopToolWrapper } from '../rkdeveloptool-wrapper.js?v=RKTOOLSRC_VER';
 
 let wrapper = null;
 let pakoInflateReadyPromise = null;

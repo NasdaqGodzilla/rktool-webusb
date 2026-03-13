@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { NodeBlob, NodeBlobReaderSync } from '../../src/node-blob.js';
+import { NodeBlob, NodeBlobReaderSync } from '../../src/node/node-blob.js';
 
 async function withTempFile(bytes, callback) {
 	const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'rktool-nodeblob-'));

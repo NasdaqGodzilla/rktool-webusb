@@ -1,7 +1,6 @@
-import { createPlatformAdapter } from './platform-adapter.js';
+import { createPlatformAdapter } from './platform-adapter.js?v=RKTOOLSRC_VER';
 
-const DEFAULT_MODULE_URL = '../dist/rkdeveloptool.js';
-const DEFAULT_WASM_URL = '../dist/rkdeveloptool.wasm';
+const DEFAULT_MODULE_URL = '../dist/rkdeveloptool.js?v=RKDEVELOPTOOL_VER';
 
 function ensureDir(FS, dirPath) {
   const dirExists = () => {
@@ -181,7 +180,6 @@ async function runCallMainAndWait(moduleInstance, argv) {
 export async function createRKDevelopToolWrapper(options = {}) {
   const platform = await createPlatformAdapter(options);
   const factory = await resolveModuleFactory(options.moduleFactory, options.moduleUrl);
-  const wasmSpecifier = normalizeSpecifier(options.wasmUrl, DEFAULT_WASM_URL);
   const dedupedLog = (callback) => {
     if (typeof callback !== 'function') {
       return () => {};
@@ -200,12 +198,6 @@ export async function createRKDevelopToolWrapper(options = {}) {
     noInitialRun: true,
     print: dedupedLog(options.onStdout),
     printErr: typeof options.onStderr === 'function' ? options.onStderr : ()=>{},
-    locateFile: (fileName) => {
-      if (fileName.endsWith('.wasm')) {
-        return wasmSpecifier;
-      }
-      return fileName;
-    },
   });
 
   const FS = moduleInstance.FS;
