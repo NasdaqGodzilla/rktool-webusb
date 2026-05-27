@@ -1,11 +1,6 @@
 /.wasm-cmake
 /build-wasm
-/dist
-/ref
 /tests/loader
 /tests/fw
 /.cert
 /node_modules
-/webarchive
-/examples/browser/dist
-/examples/browser/src
