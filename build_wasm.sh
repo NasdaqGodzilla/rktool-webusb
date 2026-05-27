@@ -51,13 +51,7 @@ require_cmd() {
 }
 
 cpu_count() {
-  if command -v sysctl >/dev/null 2>&1; then
-    sysctl -n hw.ncpu
-  elif command -v nproc >/dev/null 2>&1; then
     nproc
-  else
-    echo 4
-  fi
 }
 
 require_cmd emcc
